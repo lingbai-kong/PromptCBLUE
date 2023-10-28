@@ -79,6 +79,10 @@ class DataTrainingArguments:
         default=None,
         metadata={"help": "The name of the column in the datasets containing the full texts (for summarization)."},
     )
+    reference_column: Optional[str] = field(
+        default=None,
+        metadata={"help": "The name of the column in the datasets containing the list of searching results (for reference)."},
+    )
     response_column: Optional[str] = field(
         default=None,
         metadata={"help": "The name of the column in the datasets containing the summaries (for summarization)."},

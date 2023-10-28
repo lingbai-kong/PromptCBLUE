@@ -34,6 +34,7 @@ src/eval_chatgpt/*
 *.jpg
 *.xlsx
 *.csv
+*.pyc
 
 catboost_info
 

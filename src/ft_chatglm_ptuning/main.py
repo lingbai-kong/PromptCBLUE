@@ -193,11 +193,17 @@ def main():
 
     # Get the column names for input/target.
     prompt_column = data_args.prompt_column
+    reference_column = data_args.reference_column
     response_column = data_args.response_column
     history_column = data_args.history_column
     
     # Temporarily set max_target_length for training.
-    max_target_length = data_args.max_target_length
+    # max_target_length = data_args.max_target_length
+
+    def genPrompt(query, refs):
+        refString = "".join(f"[参考{i+1}]{ref}" for i, ref in enumerate(refs))
+        prompt = f'[搜索]{query}{refString}'
+        return prompt
 
     def preprocess_function_eval(examples):
         # print("examples: ", examples)
@@ -209,8 +215,8 @@ def main():
             else:
                 targets.append(examples[response_column][i])
 
-            if examples[prompt_column][i]:
-                query = examples[prompt_column][i]
+            if examples[prompt_column][i] and examples[reference_column][i]:
+                query = genPrompt(examples[prompt_column][i],examples[reference_column][i])
                 if history_column is None or len(examples[history_column][i]) == 0:
                     prompt = query
                 else:
@@ -223,15 +229,15 @@ def main():
 
         inputs = [prefix + inp for inp in inputs]
         # print("inputs: ", inputs)
+        print(data_args)
         model_inputs = tokenizer(inputs, max_length=data_args.max_source_length, truncation=True, padding=True)
-        labels = tokenizer(text_target=targets, max_length=max_target_length, truncation=True)
+        labels = tokenizer(text_target=targets, max_length=data_args.max_target_length, truncation=True)
 
         if data_args.ignore_pad_token_for_loss:
             labels["input_ids"] = [
                 [(l if l != tokenizer.pad_token_id else -100) for l in label] for label in labels["input_ids"]
             ]
         model_inputs["labels"] = labels["input_ids"]
-
         return model_inputs
 
     def preprocess_function_train(examples):
@@ -242,8 +248,8 @@ def main():
             "labels": [],
         }
         for i in range(len(examples[prompt_column])):
-            if examples[prompt_column][i] and examples[response_column][i]:
-                query, answer = examples[prompt_column][i], examples[response_column][i]
+            if examples[prompt_column][i] and examples[reference_column][i] and examples[response_column][i]:
+                query, answer = genPrompt(examples[prompt_column][i],examples[reference_column][i]), examples[response_column][i]
 
                 if history_column is None:
                     prompt = query
@@ -310,7 +316,7 @@ def main():
         print_dataset_example(train_dataset[1])
 
     if training_args.do_eval:
-        max_target_length = data_args.val_max_target_length
+        # max_target_length = data_args.val_max_target_length
         if "validation" not in raw_datasets:
             raise ValueError("--do_eval requires a validation dataset")
         eval_dataset = raw_datasets["validation"]
@@ -327,7 +333,7 @@ def main():
         print_dataset_example(eval_dataset[1])
 
     if training_args.do_predict:
-        max_target_length = data_args.val_max_target_length
+        # max_target_length = data_args.val_max_target_length
         if "test" not in raw_datasets:
             raise ValueError("--do_predict requires a test dataset")
         predict_dataset = raw_datasets["test"]
@@ -488,13 +494,18 @@ def main():
                 assert len(labels) == len(list_test_samples)
 
                 output_prediction_file = os.path.join(training_args.output_dir, "test_predictions.json")
+                submit_file = os.path.join(training_args.output_dir, "test_pred.jsonl")
 
-                with open(output_prediction_file, "w", encoding="utf-8") as writer:
+                with open(output_prediction_file, "w", encoding="utf-8") as writer, open(submit_file, "w", encoding="utf-8") as submit:
                     for idx, (p, l) in enumerate(zip(predictions, labels)):
                         samp = list_test_samples[idx]
                         samp["target"] = p
                         res = json.dumps(samp, ensure_ascii=False)
                         writer.write(f"{res}\n")
+                        
+                        submit_line={"predict": p}
+                        res = json.dumps(submit_line, ensure_ascii=False)
+                        submit.write(f"{res}\n")
 
     return results
 
